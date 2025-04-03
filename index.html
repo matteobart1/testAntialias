@@ -10,8 +10,11 @@
 </head>
 <body>
   <canvas id="renderCanvas"></canvas>
+
+  <!-- BabylonJS core + loader -->
   <script src="https://cdn.babylonjs.com/babylon.js"></script>
   <script src="https://cdn.babylonjs.com/loaders/babylon.glTF2FileLoader.min.js"></script>
+
   <script>
     const canvas = document.getElementById("renderCanvas");
     const engine = new BABYLON.Engine(canvas, true, {
@@ -21,27 +24,40 @@
     });
 
     const scene = new BABYLON.Scene(engine);
+
     const camera = new BABYLON.ArcRotateCamera("camera", Math.PI / 2, Math.PI / 3, 2.5, BABYLON.Vector3.Zero(), scene);
     camera.attachControl(canvas, true);
 
-    const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(1, 1, 0), scene);
+    // Luce principale
+    const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+    light.intensity = 1.5;
 
-    BABYLON.SceneLoader.Append("models/", "model.glb", scene, function (scene) {
-      scene.createDefaultCameraOrLight(true, true, true);
+    // Texture ambientale HDR per illuminazione realistica
+    const envTexture = BABYLON.CubeTexture.CreateFromPrefilteredData("https://playground.babylonjs.com/textures/environment.env", scene);
+    scene.environmentTexture = envTexture;
+    scene.createDefaultSkybox(envTexture, true, 1000);
 
+    // Carica modello
+    BABYLON.SceneLoader.Append("models/", "model.glb", scene, function () {
       scene.onReadyObservable.add(() => {
         scene.meshes.forEach(mesh => {
           if (mesh.material) {
-            // Disattiva normal map per testare artefatti
+            // Disattiva normal/bump map per test visivi
             mesh.material.bumpTexture = null;
             mesh.material.normalTexture = null;
 
-            // Forza anisotropic filtering
-            if (mesh.material.diffuseTexture) {
-              mesh.material.diffuseTexture.anisotropicFilteringLevel = 16;
-            }
-            if (mesh.material.albedoTexture) {
-              mesh.material.albedoTexture.anisotropicFilteringLevel = 16;
+            // Anisotropic filtering
+            ['albedoTexture', 'diffuseTexture'].forEach(prop => {
+              if (mesh.material[prop]) {
+                mesh.material[prop].anisotropicFilteringLevel = 16;
+              }
+            });
+
+            // Se è un PBRMaterial, aumenta la luce diretta e ambientale
+            if (mesh.material instanceof BABYLON.PBRMaterial) {
+              mesh.material.environmentIntensity = 1.5;
+              mesh.material.directIntensity = 1.5;
+              mesh.material.emissiveColor = new BABYLON.Color3(0.05, 0.05, 0.05); // leggero "boost"
             }
           }
         });
@@ -50,9 +66,6 @@
       // Rendering pipeline con MSAA
       const pipeline = new BABYLON.DefaultRenderingPipeline("default", true, scene, [camera]);
       pipeline.samples = 4;
-
-      // (Facoltativo) FXAA in alternativa
-      // const fxaa = new BABYLON.FxaaPostProcess("fxaa", 1.0, camera);
     });
 
     engine.setHardwareScalingLevel(1);
